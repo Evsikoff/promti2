@@ -506,8 +506,8 @@ class PromtiGame {
   _nextWord() {
     this._showFullscreenAd(() => {
       this.totalCompleted++;
-      this._saveProgress();
       this._loadLevel(this.currentLevelIndex + 1);
+      this._saveProgress();
     });
   }
 
@@ -584,16 +584,17 @@ class PromtiGame {
     }
 
     this._gameplayStop();
+    let called = false;
     this.ysdk.adv.showFullscreenAdv({
       callbacks: {
         onClose: (_wasShown) => {
           this._gameplayStart();
-          if (callback) callback();
+          if (!called) { called = true; callback?.(); }
         },
         onError: (e) => {
           console.warn('[promti] Fullscreen ad error:', e);
           this._gameplayStart();
-          if (callback) callback();
+          if (!called) { called = true; callback?.(); }
         }
       }
     });
