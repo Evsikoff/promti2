@@ -484,6 +484,21 @@ img {
   color: #1a4d1a;
 }
 
+/* ===== RESPONSE SECTIONS ===== */
+.response-answer {
+  /* inherits base response-box styles */
+}
+.response-reasoning {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-style: italic;
+  font-size: 0.85em;
+  opacity: 0.65;
+  line-height: 1.5;
+}
+.response-reasoning p { margin: 0; }
+
 /* ===== MARKDOWN STYLES (inside .response-box) ===== */
 .response-box h1,
 .response-box h2,

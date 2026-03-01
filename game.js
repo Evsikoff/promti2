@@ -379,18 +379,20 @@ class PromtiGame {
           'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
         },
         body: JSON.stringify({
-          model:       'deepseek-chat',
-          temperature: 0.5,
+          model:           'deepseek-chat',
+          temperature:     0.5,
+          response_format: { type: 'json_object' },
           messages: [
             {
               role: 'system',
               content:
                 'Ты участвуешь в игре «Объясни фразу». ' +
                 'Пользователь описывает загаданное словосочетание, не используя слова с теми же корнями, что и в этой фразе. ' +
-                'Твоя задача — угадать фразу и обязательно написать её дословно и точно в своём ответе. ' +
-                'Угаданная фраза должна прозвучать в ответе явно, в той же форме, как она обычно используется. ' +
-                'Ответ должен быть кратким. ' +
-                'Важно: в своём ответе также не используй однокоренные слова к словам, которые пользователь употребил в своём запросе. ' +
+                'Твоя задача — угадать фразу. ' +
+                'Отвечай строго в формате JSON с двумя полями: ' +
+                '"answer" — угаданная фраза, написанная дословно и точно, в той форме, как она обычно используется; ' +
+                '"reasoning" — краткое обоснование, почему ты считаешь, что ответ именно такой. ' +
+                'Важно: в поле "reasoning" также не используй однокоренные слова к словам, которые пользователь употребил в своём запросе. ' +
                 'Отвечай на русском языке.'
             },
             { role: 'user', content: promptText.trim() }
@@ -403,11 +405,17 @@ class PromtiGame {
         throw new Error(errJson.error?.message || `HTTP ${res.status}`);
       }
 
-      const data         = await res.json();
-      const aiResponse   = data.choices[0].message.content;
-      const phraseFound  = this._checkPhraseInResponse(aiResponse);
+      const data       = await res.json();
+      const raw        = data.choices[0].message.content;
+      let answer = raw, reasoning = null;
+      try {
+        const parsed = JSON.parse(raw);
+        answer    = parsed.answer    || raw;
+        reasoning = parsed.reasoning || null;
+      } catch (e) { /* fallback: treat whole response as answer */ }
 
-      this._showResponse(aiResponse, phraseFound);
+      const phraseFound = this._checkPhraseInResponse(answer);
+      this._showResponse(answer, reasoning, phraseFound);
       this._showResultButtons(phraseFound);
 
     } catch (err) {
@@ -452,14 +460,17 @@ class PromtiGame {
     return new RegExp(pattern, 'gi');
   }
 
-  _showResponse(text, phraseFound) {
-    // Configure marked: GFM, line breaks, no raw HTML injection
+  _showResponse(answer, reasoning, phraseFound) {
     marked.use({ gfm: true, breaks: true });
-    const html = marked.parse(text);
+
+    let html = `<div class="response-answer">${marked.parse(answer)}</div>`;
+    if (reasoning) {
+      html += `<div class="response-reasoning">${marked.parse(reasoning)}</div>`;
+    }
     this.el.responseBox.innerHTML = html;
 
     if (phraseFound) {
-      this._highlightPhraseInDOM(this.el.responseBox);
+      this._highlightPhraseInDOM(this.el.responseBox.querySelector('.response-answer'));
     }
   }
 
