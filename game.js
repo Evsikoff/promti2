@@ -4,7 +4,8 @@
 const DEEPSEEK_API_KEY = 'sk-9bd0908d76194c21bb304fe259a4e7fc';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 const IAP_PRODUCT_ID   = 'phrases_pack_10';
-const FREE_PHRASES     = 10; // phrases available without purchase
+const FIRST_IAP_AT  = 15; // free phrases before first purchase offer
+const IAP_PACK_SIZE = 10; // phrases unlocked per purchase
 
 // ===== GAME CLASS =====
 class PromtiGame {
@@ -15,7 +16,7 @@ class PromtiGame {
     this.payments = null;
 
     // Game state
-    this.currentPhraseId     = 1;
+    this.currentLevelIndex   = 0; // 0-based position in sorted GAME_DATA.phrases
     this.currentPhrase       = null;
     this.activeForbidden     = [];   // forbidden words active this level
     this.removedForbidden    = {};   // { phraseId: Set<forbiddenWordId> }
@@ -38,7 +39,7 @@ class PromtiGame {
 
     await this._initYandex();
     this._loadProgress();
-    this._loadLevel(this.currentPhraseId);
+    this._loadLevel(this.currentLevelIndex);
 
     // Notify Yandex that loading is complete
     this.ysdk?.features?.LoadingAPI?.ready();
@@ -128,9 +129,9 @@ class PromtiGame {
 
   _applyProgressData(data) {
     if (!data) return;
-    this.currentPhraseId  = data.currentPhraseId  || 1;
-    this.totalCompleted   = data.totalCompleted    || 0;
-    this.purchasedPacks   = data.purchasedPacks    || 0;
+    this.currentLevelIndex = data.currentLevelIndex ?? 0;
+    this.totalCompleted    = data.totalCompleted    || 0;
+    this.purchasedPacks    = data.purchasedPacks    || 0;
 
     // Restore removed forbidden words
     const saved = data.removedForbidden || {};
@@ -141,7 +142,7 @@ class PromtiGame {
 
   _saveProgress() {
     const data = {
-      currentPhraseId:  this.currentPhraseId,
+      currentLevelIndex: this.currentLevelIndex,
       totalCompleted:   this.totalCompleted,
       purchasedPacks:   this.purchasedPacks,
       removedForbidden: Object.fromEntries(
@@ -160,8 +161,8 @@ class PromtiGame {
   }
 
   // ------------------------------------------------------------------ LEVEL LOAD
-  _loadLevel(phraseId) {
-    this.currentPhrase = GAME_DATA.phrases.find(p => p.id === phraseId);
+  _loadLevel(levelIndex) {
+    this.currentPhrase = GAME_DATA.phrases[levelIndex];
 
     if (!this.currentPhrase) {
       this._showGameComplete();
@@ -169,24 +170,25 @@ class PromtiGame {
     }
 
     // Check if IAP is required before showing this level
+    this.currentLevelIndex = levelIndex;
     if (this._isIAPRequired()) {
       this.el.iapOverlay.classList.remove('hidden');
       return;
     }
 
-    this.currentPhraseId     = phraseId;
     this.promptSentThisLevel = false;
     this.selectionMode       = false;
     this.selectedForbiddenId = null;
 
-    // Build active forbidden list (exclude removed ones)
-    const removed = this.removedForbidden[phraseId] || new Set();
+    // Build active forbidden list keyed by the phrase's DB id
+    const dbId   = this.currentPhrase.id;
+    const removed = this.removedForbidden[dbId] || new Set();
     this.activeForbidden = GAME_DATA.forbidden_words
-      .filter(fw => fw.phrase_id === phraseId && !removed.has(fw.id));
+      .filter(fw => fw.phrase_id === dbId && !removed.has(fw.id));
 
-    // Update level indicator
+    // Update level indicator (1-based display)
     this.el.levelIndicator.textContent =
-      `Уровень ${phraseId} из ${GAME_DATA.phrases.length}`;
+      `Уровень ${levelIndex + 1} из ${GAME_DATA.phrases.length}`;
 
     // Render phrase
     this.el.targetPhrase.textContent = this.currentPhrase.phrase;
@@ -305,7 +307,7 @@ class PromtiGame {
   }
 
   _removeForbiddenWord(fwId) {
-    const pid = this.currentPhraseId;
+    const pid = this.currentPhrase.id; // DB id, not level index
     if (!this.removedForbidden[pid]) this.removedForbidden[pid] = new Set();
     this.removedForbidden[pid].add(fwId);
 
@@ -505,15 +507,15 @@ class PromtiGame {
     this._showFullscreenAd(() => {
       this.totalCompleted++;
       this._saveProgress();
-      this._loadLevel(this.currentPhraseId + 1);
+      this._loadLevel(this.currentLevelIndex + 1);
     });
   }
 
   // ------------------------------------------------------------------ IAP
   _isIAPRequired() {
-    const freeLimit     = FREE_PHRASES;
-    const purchasedMore = this.purchasedPacks * 10;
-    return this.currentPhraseId > freeLimit + purchasedMore;
+    // First offer after level 15, then every IAP_PACK_SIZE levels
+    const limit = FIRST_IAP_AT + this.purchasedPacks * IAP_PACK_SIZE;
+    return this.currentLevelIndex >= limit; // 0-based index, so index 15 = level 16
   }
 
   async _handlePurchase() {
@@ -522,7 +524,7 @@ class PromtiGame {
       this.purchasedPacks++;
       this._saveProgress();
       this.el.iapOverlay.classList.add('hidden');
-      this._loadLevel(this.currentPhraseId);
+      this._loadLevel(this.currentLevelIndex);
       return;
     }
 
@@ -531,7 +533,7 @@ class PromtiGame {
       this.purchasedPacks++;
       this._saveProgress();
       this.el.iapOverlay.classList.add('hidden');
-      this._loadLevel(this.currentPhraseId);
+      this._loadLevel(this.currentLevelIndex);
     } catch (e) {
       if (e.code !== 'UserCanceled') {
         console.error('[promti] Purchase error:', e);

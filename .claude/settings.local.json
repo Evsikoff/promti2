@@ -4,7 +4,10 @@
       "Bash(sqlite3 promti.db \".tables\")",
       "Bash(sqlite3 promti.db \".schema\")",
       "Bash(sqlite3 promti.db \"SELECT * FROM phrases LIMIT 5;\")",
-      "Bash(sqlite3 promti.db \"SELECT * FROM forbidden_words LIMIT 10;\")"
+      "Bash(sqlite3 promti.db \"SELECT * FROM forbidden_words LIMIT 10;\")",
+      "Bash(sqlite3 promti.db \"SELECT id, phrase, complexity FROM phrases ORDER BY complexity ASC, id ASC;\")",
+      "Bash(sqlite3 promti.db \"SELECT COUNT\\(*\\) FROM phrases;\")",
+      "Bash(sqlite3 promti.db \"SELECT id, phrase_id, root FROM forbidden_words WHERE phrase_id >= 81 ORDER BY phrase_id, id;\")"
     ]
   }
 }
