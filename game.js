@@ -3,9 +3,13 @@
 // ===== CONFIG =====
 const DEEPSEEK_API_KEY = 'sk-9bd0908d76194c21bb304fe259a4e7fc';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
-const IAP_PRODUCT_ID   = 'phrases_pack_10';
-const FIRST_IAP_AT  = 15; // free phrases before first purchase offer
-const IAP_PACK_SIZE = 10; // phrases unlocked per purchase
+
+const ENERGY_IAP_ID          = 'energy_pack_50';
+const ENERGY_IAP_AMOUNT      = 50;
+const ENERGY_VIDEO_AMOUNT    = 5;
+const ENERGY_FIRST_GRANT     = 15;
+const ENERGY_FREE_AMOUNT     = 10;
+const ENERGY_FREE_INTERVAL   = 10 * 60 * 60 * 1000; // 10 hours in ms
 
 // ===== GAME CLASS =====
 class PromtiGame {
@@ -21,8 +25,13 @@ class PromtiGame {
     this.activeForbidden     = [];   // forbidden words active this level
     this.removedForbidden    = {};   // { phraseId: Set<forbiddenWordId> }
     this.promptSentThisLevel = false;
-    this.purchasedPacks      = 0;
     this.totalCompleted      = 0;
+    this.totalAttempts       = 0;
+
+    // Energy state
+    this.energy              = 0;
+    this.lastFreeEnergyTime  = 0;    // timestamp of last free grant (0 = never)
+    this.energyTimerInterval = null;
 
     // UI selection state
     this.selectionMode       = false;
@@ -39,7 +48,9 @@ class PromtiGame {
 
     await this._initYandex();
     this._loadProgress();
+    this._initEnergy();
     this._loadLevel(this.currentLevelIndex);
+    this._updateStatsPanel();
 
     // Notify Yandex that loading is complete
     this.ysdk?.features?.LoadingAPI?.ready();
@@ -73,8 +84,16 @@ class PromtiGame {
       resultBtns:           $('result-btns'),
       btnRetry:             $('btn-retry'),
       btnNext:              $('btn-next-word'),
-      iapOverlay:           $('iap-overlay'),
-      btnBuy:               $('btn-buy'),
+      statCompleted:        $('stat-completed'),
+      statAttempts:         $('stat-attempts'),
+      statEnergy:           $('stat-energy'),
+      btnEnergyAdd:         $('btn-energy-add'),
+      energyModal:          $('energy-modal'),
+      modalEnergyValue:     $('modal-energy-value'),
+      energyTimer:          $('energy-timer'),
+      btnEnergyClose:       $('btn-energy-close'),
+      btnEnergyWatch:       $('btn-energy-watch'),
+      btnEnergyBuy:         $('btn-energy-buy'),
     };
   }
 
@@ -87,7 +106,10 @@ class PromtiGame {
     el.btnSend.addEventListener('click', () => this._sendPrompt());
     el.btnRetry.addEventListener('click', () => this._retryLevel());
     el.btnNext.addEventListener('click', () => this._nextWord());
-    el.btnBuy.addEventListener('click', () => this._handlePurchase());
+    el.btnEnergyAdd.addEventListener('click', () => this._openEnergyModal());
+    el.btnEnergyClose.addEventListener('click', () => this._closeEnergyModal());
+    el.btnEnergyWatch.addEventListener('click', () => this._watchVideoForEnergy());
+    el.btnEnergyBuy.addEventListener('click', () => this._handleEnergyPurchase());
   }
 
   // ------------------------------------------------------------------ YANDEX
@@ -114,6 +136,7 @@ class PromtiGame {
       } catch (e) {
         console.warn('[promti] Payments unavailable:', e.message);
       }
+
     } catch (e) {
       console.warn('[promti] Yandex SDK init failed:', e.message);
     }
@@ -129,9 +152,11 @@ class PromtiGame {
 
   _applyProgressData(data) {
     if (!data) return;
-    this.currentLevelIndex = data.currentLevelIndex ?? 0;
-    this.totalCompleted    = data.totalCompleted    || 0;
-    this.purchasedPacks    = data.purchasedPacks    || 0;
+    this.currentLevelIndex  = data.currentLevelIndex  ?? 0;
+    this.totalCompleted     = data.totalCompleted     || 0;
+    this.totalAttempts      = data.totalAttempts      || 0;
+    this.energy             = data.energy             || 0;
+    this.lastFreeEnergyTime = data.lastFreeEnergyTime || 0;
 
     // Restore removed forbidden words
     const saved = data.removedForbidden || {};
@@ -142,9 +167,11 @@ class PromtiGame {
 
   _saveProgress() {
     const data = {
-      currentLevelIndex: this.currentLevelIndex,
-      totalCompleted:   this.totalCompleted,
-      purchasedPacks:   this.purchasedPacks,
+      currentLevelIndex:  this.currentLevelIndex,
+      totalCompleted:     this.totalCompleted,
+      totalAttempts:      this.totalAttempts,
+      energy:             this.energy,
+      lastFreeEnergyTime: this.lastFreeEnergyTime,
       removedForbidden: Object.fromEntries(
         Object.entries(this.removedForbidden).map(([k, s]) => [k, [...s]])
       )
@@ -169,13 +196,7 @@ class PromtiGame {
       return;
     }
 
-    // Check if IAP is required before showing this level
     this.currentLevelIndex = levelIndex;
-    if (this._isIAPRequired()) {
-      this.el.iapOverlay.classList.remove('hidden');
-      return;
-    }
-
     this.promptSentThisLevel = false;
     this.selectionMode       = false;
     this.selectedForbiddenId = null;
@@ -333,6 +354,9 @@ class PromtiGame {
     if (this.promptSentThisLevel) {
       return { valid: false, msg: 'Промт уже был отправлен на этом уровне' };
     }
+    if (this.energy <= 0) {
+      return { valid: false, msg: 'Недостаточно энергии — пополните запас' };
+    }
     const normText = this._normalize(text);
     for (const fw of this.activeForbidden) {
       if (normText.includes(this._normalize(fw.root))) {
@@ -359,6 +383,12 @@ class PromtiGame {
     this.el.btnSend.disabled        = true;
     this.el.promptTextarea.disabled = true;
     this.el.resultBtns.classList.add('hidden');
+
+    // Deduct 1 energy and count the attempt
+    this.totalAttempts++;
+    this.energy = Math.max(0, this.energy - 1);
+    this._saveProgress();
+    this._updateStatsPanel();
 
     // Show spinner
     this.el.responseBox.innerHTML = `
@@ -513,7 +543,7 @@ class PromtiGame {
 
   // ------------------------------------------------------------------ RETRY / NEXT
   _retryLevel() {
-    this._showRewardedVideo(() => {
+    this._showFullscreenAd(() => {
       this.promptSentThisLevel        = false;
       this.el.promptTextarea.disabled = false;
       this.el.responseBox.innerHTML   =
@@ -528,35 +558,88 @@ class PromtiGame {
       this.totalCompleted++;
       this._loadLevel(this.currentLevelIndex + 1);
       this._saveProgress();
+      this._updateStatsPanel();
     });
   }
 
-  // ------------------------------------------------------------------ IAP
-  _isIAPRequired() {
-    // First offer after level 15, then every IAP_PACK_SIZE levels
-    const limit = FIRST_IAP_AT + this.purchasedPacks * IAP_PACK_SIZE;
-    return this.currentLevelIndex >= limit; // 0-based index, so index 15 = level 16
+  // ------------------------------------------------------------------ ENERGY
+  _initEnergy() {
+    const now = Date.now();
+    if (this.lastFreeEnergyTime === 0) {
+      // First ever launch
+      this.energy += ENERGY_FIRST_GRANT;
+      this.lastFreeEnergyTime = now;
+      this._saveProgress();
+    } else if (now - this.lastFreeEnergyTime >= ENERGY_FREE_INTERVAL) {
+      // 10 hours have passed since last free grant
+      this.energy += ENERGY_FREE_AMOUNT;
+      this.lastFreeEnergyTime = now;
+      this._saveProgress();
+    }
   }
 
-  async _handlePurchase() {
+  _updateStatsPanel() {
+    this.el.statCompleted.textContent  = this.totalCompleted;
+    this.el.statAttempts.textContent   = this.totalAttempts;
+    this.el.statEnergy.textContent     = this.energy;
+  }
+
+  _openEnergyModal() {
+    this.el.modalEnergyValue.textContent = this.energy;
+    this._updateEnergyTimer();
+    this.el.energyModal.classList.remove('hidden');
+    this.energyTimerInterval = setInterval(() => this._updateEnergyTimer(), 1000);
+  }
+
+  _closeEnergyModal() {
+    this.el.energyModal.classList.add('hidden');
+    clearInterval(this.energyTimerInterval);
+    this.energyTimerInterval = null;
+  }
+
+  _updateEnergyTimer() {
+    const remaining = Math.max(0, ENERGY_FREE_INTERVAL - (Date.now() - this.lastFreeEnergyTime));
+    if (remaining === 0) {
+      this.el.energyTimer.textContent = 'Бесплатная энергия доступна — зайдите снова!';
+    } else {
+      const h = Math.floor(remaining / 3_600_000);
+      const m = Math.floor((remaining % 3_600_000) / 60_000);
+      const s = Math.floor((remaining % 60_000) / 1_000);
+      this.el.energyTimer.textContent =
+        `До следующего бесплатного начисления: ${h}ч ${String(m).padStart(2,'0')}м ${String(s).padStart(2,'0')}с`;
+    }
+  }
+
+  _watchVideoForEnergy() {
+    this._showRewardedVideo(
+      () => {
+        this.energy += ENERGY_VIDEO_AMOUNT;
+        this._saveProgress();
+        this._updateStatsPanel();
+        this.el.modalEnergyValue.textContent = this.energy;
+      },
+      () => { /* no reward — do nothing */ }
+    );
+  }
+
+  async _handleEnergyPurchase() {
     if (!this.payments) {
-      alert('Покупки доступны только в среде Яндекс Игр.\nВ режиме разработки покупка засчитывается автоматически.');
-      this.purchasedPacks++;
+      // Dev mode: grant instantly
+      this.energy += ENERGY_IAP_AMOUNT;
       this._saveProgress();
-      this.el.iapOverlay.classList.add('hidden');
-      this._loadLevel(this.currentLevelIndex);
+      this._updateStatsPanel();
+      this.el.modalEnergyValue.textContent = this.energy;
       return;
     }
-
     try {
-      await this.payments.purchase({ id: IAP_PRODUCT_ID });
-      this.purchasedPacks++;
+      await this.payments.purchase({ id: ENERGY_IAP_ID });
+      this.energy += ENERGY_IAP_AMOUNT;
       this._saveProgress();
-      this.el.iapOverlay.classList.add('hidden');
-      this._loadLevel(this.currentLevelIndex);
+      this._updateStatsPanel();
+      this.el.modalEnergyValue.textContent = this.energy;
     } catch (e) {
       if (e.code !== 'UserCanceled') {
-        console.error('[promti] Purchase error:', e);
+        console.error('[promti] Energy purchase error:', e);
         alert('Ошибка покупки. Попробуйте позже.');
       }
     }

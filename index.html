@@ -45,6 +45,23 @@
   <h1 id="main-title">Объясни фразу ИИ</h1>
   <div id="level-indicator">Уровень 1</div>
 
+  <!-- ── Панель статов ── -->
+  <div class="stats-panel" id="stats-panel">
+    <div class="stat-item">
+      <span class="stat-label">Объяснено:</span>
+      <span class="stat-value" id="stat-completed">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Попытки:</span>
+      <span class="stat-value" id="stat-attempts">0</span>
+    </div>
+    <div class="stat-item stat-item-energy">
+      <span class="stat-label">Энергия:</span>
+      <span class="stat-value" id="stat-energy">0</span>
+      <button class="btn-energy-add" id="btn-energy-add" title="Получить энергию">+</button>
+    </div>
+  </div>
+
   <!-- ══════════════════════════════════════════
        ДОСКА 1 — зелёная, цвет 1
        ══════════════════════════════════════════ -->
@@ -110,7 +127,7 @@
     <!-- Кнопки результата -->
     <div class="result-btns hidden" id="result-btns">
       <button class="btn btn-video hidden" id="btn-retry">
-        Попробовать ещё раз 🎬
+        Попробовать ещё раз
       </button>
       <button class="btn btn-success hidden" id="btn-next-word">
         Перейти к следующему слову →
@@ -121,16 +138,17 @@
 </div><!-- #game-container -->
 
 <!-- ══════════════════════════════════════════
-     IAP OVERLAY — блокировка каждые 10 уровней
+     ENERGY MODAL
      ══════════════════════════════════════════ -->
-<div class="overlay hidden" id="iap-overlay">
-  <div class="iap-modal">
-    <span class="trophy">🏆</span>
-    <h2>Поздравляем!</h2>
-    <p>Вы прошли 10 фраз!</p>
-    <p>Чтобы продолжить игру, купите ещё 10 новых фраз:</p>
-    <div class="price">90 ₽</div>
-    <button class="btn btn-buy" id="btn-buy">Купить</button>
+<div class="overlay hidden" id="energy-modal">
+  <div class="energy-modal">
+    <button class="modal-close-btn" id="btn-energy-close">✕</button>
+    <div class="energy-modal-icon">⚡</div>
+    <h3 class="energy-modal-title">Энергия</h3>
+    <div class="energy-modal-current">У вас <span id="modal-energy-value">0</span> ед.</div>
+    <div class="energy-timer" id="energy-timer">—</div>
+    <button class="btn btn-video" id="btn-energy-watch">Получить 5 единиц энергии 🎬</button>
+    <button class="btn btn-buy" id="btn-energy-buy">Купить 50 единиц энергии — 90 ₽</button>
   </div>
 </div>
 
