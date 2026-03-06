@@ -104,9 +104,20 @@ img {
   background: #ffd84d;
 }
 
-#game-container {
+/* ===== APP CONTAINER (outer max-width wrapper) ===== */
+#app-container {
   width: 100%;
   max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+/* ===== SCREENS (start + game) ===== */
+#game-container,
+#start-screen {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -838,6 +849,98 @@ img {
   color: #c8a050;
   font-size: 1rem;
   line-height: 1.6;
+}
+
+/* ===== BACK BUTTON ===== */
+.btn-back {
+  background: linear-gradient(180deg, #607d8b 0%, #37474f 100%);
+  color: #fff;
+}
+
+/* ===== DICTIONARIES CONTAINER ===== */
+.dictionaries-container {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  padding: 4px 0 8px;
+}
+
+/* ===== DICTIONARY BADGE ===== */
+.dict-badge {
+  width: calc(50% - 7px);
+  max-width: 300px;
+  min-width: 130px;
+  background: linear-gradient(160deg, #1e3a1e 0%, #122212 100%);
+  border: 2px solid #4a8050;
+  border-radius: 16px;
+  padding: 18px 16px 14px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+
+.dict-badge:hover:not(.dict-badge-done) {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.6);
+  border-color: #72c07a;
+}
+
+.dict-badge:active:not(.dict-badge-done) {
+  transform: translateY(1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+.dict-badge-done {
+  cursor: default;
+  border-color: #2e7d32;
+  opacity: 0.85;
+}
+
+.dict-badge-icon {
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.dict-badge-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #ffd84d;
+  margin-bottom: 6px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.7);
+  line-height: 1.2;
+}
+
+.dict-badge-example {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.6);
+  font-style: italic;
+  margin-bottom: 12px;
+  line-height: 1.3;
+}
+
+.dict-badge-progress {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.02em;
+}
+
+.dict-badge-check {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 5rem;
+  color: #43a047;
+  font-weight: 900;
+  text-shadow: 0 0 20px rgba(67,160,71,0.6), 0 2px 8px rgba(0,0,0,0.8);
+  pointer-events: none;
+  line-height: 1;
 }
 
 /* ===== UTILITY ===== */

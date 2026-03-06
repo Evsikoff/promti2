@@ -39,13 +39,15 @@
 </head>
 <body>
 
-<div id="game-container">
+<!-- ══════════════════════════════════════════
+     APP CONTAINER — max-width wrapper
+     ══════════════════════════════════════════ -->
+<div id="app-container">
 
-  <!-- ── Главный заголовок ── -->
+  <!-- ── Главный заголовок (общий для обоих экранов) ── -->
   <h1 id="main-title">Объясни фразу ИИ</h1>
-  <div id="level-indicator">Уровень 1</div>
 
-  <!-- ── Панель статов ── -->
+  <!-- ── Панель статов (общая для обоих экранов) ── -->
   <div class="stats-panel" id="stats-panel">
     <div class="stat-item">
       <span class="stat-label">Объяснено:</span>
@@ -64,79 +66,89 @@
   </div>
 
   <!-- ══════════════════════════════════════════
-       ДОСКА 1 — зелёная, цвет 1
+       СТАРТОВЫЙ ЭКРАН
        ══════════════════════════════════════════ -->
-  <div class="board board-1" id="board-1">
-    <h2 class="board-title">Заставь ИИ написать следующую фразу</h2>
+  <div id="start-screen" class="hidden">
+    <div id="dictionaries-container" class="dictionaries-container"></div>
+  </div>
 
-    <!-- Белый лист бумаги на скотче -->
-    <div class="paper-container">
-      <div class="white-paper">
-        <span id="target-phrase">Загрузка…</span>
+  <!-- ══════════════════════════════════════════
+       ИГРОВОЙ ЭКРАН
+       ══════════════════════════════════════════ -->
+  <div id="game-container" class="hidden">
+
+    <div id="level-indicator">Уровень 1</div>
+
+    <!-- Кнопка назад -->
+    <div class="btn-row">
+      <button class="btn btn-back" id="btn-back">&#8592; Назад</button>
+    </div>
+
+    <!-- ── Доска 1 — зелёная ── -->
+    <div class="board board-1" id="board-1">
+      <h2 class="board-title">Заставь ИИ написать следующую фразу</h2>
+
+      <div class="paper-container">
+        <div class="white-paper">
+          <span id="target-phrase">Загрузка…</span>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- ══════════════════════════════════════════
-       ДОСКА 2 — синяя, цвет 2
-       ══════════════════════════════════════════ -->
-  <div class="board board-2" id="board-2">
-    <h2 class="board-title">Не используй следующие комбинации букв</h2>
+    <!-- ── Доска 2 — синяя ── -->
+    <div class="board board-2" id="board-2">
+      <h2 class="board-title">Не используй следующие комбинации букв</h2>
 
-    <!-- Красные карточки запрещённых корней -->
-    <div class="forbidden-words-container" id="forbidden-container"></div>
-  </div>
+      <div class="forbidden-words-container" id="forbidden-container"></div>
+    </div>
 
-  <!-- Кнопки управления запретами -->
-  <div class="btn-row">
-    <button class="btn btn-video" id="btn-remove-restriction">
-      Убрать запрет 🎬
-    </button>
-    <button class="btn btn-cancel hidden" id="btn-cancel-selection">
-      Отмена
-    </button>
-  </div>
-
-  <!-- ══════════════════════════════════════════
-       ВВОД ПРОМТА
-       ══════════════════════════════════════════ -->
-  <div class="input-section">
-    <textarea
-      id="prompt-textarea"
-      class="prompt-textarea"
-      placeholder="Введите ваш промт здесь…"
-      rows="5"
-    ></textarea>
-
-    <div id="validation-msg" class="validation-message"></div>
-
+    <!-- Кнопки управления запретами -->
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn-send-prompt" disabled>
-        Отправить Prompt
+      <button class="btn btn-video" id="btn-remove-restriction">
+        Убрать запрет 🎬
+      </button>
+      <button class="btn btn-cancel hidden" id="btn-cancel-selection">
+        Отмена
       </button>
     </div>
-  </div>
 
-  <!-- ══════════════════════════════════════════
-       ОТВЕТ НЕЙРОСЕТИ
-       ══════════════════════════════════════════ -->
-  <div class="response-section">
-    <div class="response-box" id="response-box">
-      <span class="placeholder-text">Ответ нейросети появится здесь</span>
+    <!-- ── Ввод промта ── -->
+    <div class="input-section">
+      <textarea
+        id="prompt-textarea"
+        class="prompt-textarea"
+        placeholder="Введите ваш промт здесь…"
+        rows="5"
+      ></textarea>
+
+      <div id="validation-msg" class="validation-message"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-send-prompt" disabled>
+          Отправить Prompt
+        </button>
+      </div>
     </div>
 
-    <!-- Кнопки результата -->
-    <div class="result-btns hidden" id="result-btns">
-      <button class="btn btn-video hidden" id="btn-retry">
-        Попробовать ещё раз
-      </button>
-      <button class="btn btn-success hidden" id="btn-next-word">
-        Перейти к следующему слову →
-      </button>
-    </div>
-  </div>
+    <!-- ── Ответ нейросети ── -->
+    <div class="response-section">
+      <div class="response-box" id="response-box">
+        <span class="placeholder-text">Ответ нейросети появится здесь</span>
+      </div>
 
-</div><!-- #game-container -->
+      <div class="result-btns hidden" id="result-btns">
+        <button class="btn btn-video hidden" id="btn-retry">
+          Попробовать ещё раз
+        </button>
+        <button class="btn btn-success hidden" id="btn-next-word">
+          Перейти к следующему слову →
+        </button>
+      </div>
+    </div>
+
+  </div><!-- #game-container -->
+
+</div><!-- #app-container -->
 
 <!-- ══════════════════════════════════════════
      ENERGY MODAL
@@ -170,8 +182,7 @@
   </div>
 </div>
 
-<!-- Data & logic -->
-<script src="data.js"></script>
+<!-- Logic -->
 <script src="game.js"></script>
 </body>
 </html>

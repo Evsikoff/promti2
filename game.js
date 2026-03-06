@@ -21,12 +21,20 @@ class PromtiGame {
     this.player   = null;
     this.payments = null;
 
+    // Data loaded from JSON files
+    this.phrases       = [];  // from phrases.json
+    this.forbiddenWords = []; // from forbidden_words.json
+    this.dictionaries  = [];  // from dictionaries.json
+
     // Game state
-    this.currentLevelIndex   = 0; // 0-based position in sorted GAME_DATA.phrases
+    this.currentDictionaryId = null;
     this.currentPhrase       = null;
     this.activeForbidden     = [];   // forbidden words active this level
     this.removedForbidden    = {};   // { phraseId: Set<forbiddenWordId> }
     this.promptSentThisLevel = false;
+
+    // Progress
+    this.completedPhrases    = {};   // { phraseId: true }
     this.totalCompleted      = 0;
     this.totalAttempts       = 0;
 
@@ -51,11 +59,13 @@ class PromtiGame {
     this._cacheElements();
     this._bindEvents();
 
-    await this._initYandex();
+    await Promise.all([
+      this._initYandex(),
+      this._loadData()
+    ]);
     await this._loadPromotion();
     this._loadProgress();
     this._initEnergy();
-    this._loadLevel(this.currentLevelIndex);
     this._updateStatsPanel();
     this._applyPromotionUI();
 
@@ -67,9 +77,12 @@ class PromtiGame {
 
     // Log interface language (for future localisation)
     if (this.ysdk) {
-      const lang = this.ysdk.environment.i18n.lang; // e.g. 'ru'
+      const lang = this.ysdk.environment.i18n.lang;
       console.info('[promti] i18n.lang:', lang);
     }
+
+    // Show start screen
+    this._showStartScreen();
 
     // Reveal the game — fade out loading overlay
     this.el.loadingOverlay.classList.add('hidden');
@@ -78,37 +91,42 @@ class PromtiGame {
   _cacheElements() {
     const $ = id => document.getElementById(id);
     this.el = {
-      loadingOverlay:       $('loading-overlay'),
-      levelIndicator:       $('level-indicator'),
-      targetPhrase:         $('target-phrase'),
-      forbiddenContainer:   $('forbidden-container'),
-      btnRemove:            $('btn-remove-restriction'),
-      btnCancelSel:         $('btn-cancel-selection'),
-      promptTextarea:       $('prompt-textarea'),
-      validationMsg:        $('validation-msg'),
-      btnSend:              $('btn-send-prompt'),
-      responseBox:          $('response-box'),
-      resultBtns:           $('result-btns'),
-      btnRetry:             $('btn-retry'),
-      btnNext:              $('btn-next-word'),
-      statCompleted:        $('stat-completed'),
-      statAttempts:         $('stat-attempts'),
-      statEnergy:           $('stat-energy'),
-      btnEnergyAdd:         $('btn-energy-add'),
-      energyModal:          $('energy-modal'),
-      modalEnergyValue:     $('modal-energy-value'),
-      energyTimer:          $('energy-timer'),
-      btnEnergyClose:       $('btn-energy-close'),
-      btnEnergyWatch:       $('btn-energy-watch'),
-      btnEnergyBuy:         $('btn-energy-buy'),
-      promoBadge:           $('promo-badge'),
-      discountBadge:        $('discount-badge'),
+      loadingOverlay:         $('loading-overlay'),
+      startScreen:            $('start-screen'),
+      gameContainer:          $('game-container'),
+      dictionariesContainer:  $('dictionaries-container'),
+      levelIndicator:         $('level-indicator'),
+      btnBack:                $('btn-back'),
+      targetPhrase:           $('target-phrase'),
+      forbiddenContainer:     $('forbidden-container'),
+      btnRemove:              $('btn-remove-restriction'),
+      btnCancelSel:           $('btn-cancel-selection'),
+      promptTextarea:         $('prompt-textarea'),
+      validationMsg:          $('validation-msg'),
+      btnSend:                $('btn-send-prompt'),
+      responseBox:            $('response-box'),
+      resultBtns:             $('result-btns'),
+      btnRetry:               $('btn-retry'),
+      btnNext:                $('btn-next-word'),
+      statCompleted:          $('stat-completed'),
+      statAttempts:           $('stat-attempts'),
+      statEnergy:             $('stat-energy'),
+      btnEnergyAdd:           $('btn-energy-add'),
+      energyModal:            $('energy-modal'),
+      modalEnergyValue:       $('modal-energy-value'),
+      energyTimer:            $('energy-timer'),
+      btnEnergyClose:         $('btn-energy-close'),
+      btnEnergyWatch:         $('btn-energy-watch'),
+      btnEnergyBuy:           $('btn-energy-buy'),
+      promoBadge:             $('promo-badge'),
+      discountBadge:          $('discount-badge'),
     };
   }
 
   _bindEvents() {
     const { el } = this;
 
+    el.btnBack.addEventListener('click', () => this._goBack());
     el.btnRemove.addEventListener('click', () => this._enterSelectionMode());
     el.btnCancelSel.addEventListener('click', () => this._exitSelectionMode());
     el.promptTextarea.addEventListener('input', () => this._updateSendBtn());
@@ -119,6 +137,26 @@ class PromtiGame {
     el.btnEnergyClose.addEventListener('click', () => this._closeEnergyModal());
     el.btnEnergyWatch.addEventListener('click', () => this._watchVideoForEnergy());
     el.btnEnergyBuy.addEventListener('click', () => this._handleEnergyPurchase());
+  }
+
+  // ------------------------------------------------------------------ DATA LOADING
+  async _loadData() {
+    try {
+      const [phrasesRes, forbiddenRes, dictionariesRes] = await Promise.all([
+        fetch('phrases.json'),
+        fetch('forbidden_words.json'),
+        fetch('dictionaries.json')
+      ]);
+      const phrasesData      = await phrasesRes.json();
+      const forbiddenData    = await forbiddenRes.json();
+      const dictionariesData = await dictionariesRes.json();
+
+      this.phrases        = phrasesData.phrases           || [];
+      this.forbiddenWords = forbiddenData.forbidden_words  || [];
+      this.dictionaries   = dictionariesData.dictionaries  || [];
+    } catch (e) {
+      console.error('[promti] Failed to load game data:', e);
+    }
   }
 
   // ------------------------------------------------------------------ YANDEX
@@ -208,11 +246,11 @@ class PromtiGame {
 
   _applyProgressData(data) {
     if (!data) return;
-    this.currentLevelIndex  = data.currentLevelIndex  ?? 0;
     this.totalCompleted     = data.totalCompleted     || 0;
     this.totalAttempts      = data.totalAttempts      || 0;
     this.energy             = data.energy             || 0;
     this.lastFreeEnergyTime = data.lastFreeEnergyTime || 0;
+    this.completedPhrases   = data.completedPhrases   || {};
 
     // Restore removed forbidden words
     const saved = data.removedForbidden || {};
@@ -223,11 +261,11 @@ class PromtiGame {
 
   _saveProgress() {
     const data = {
-      currentLevelIndex:  this.currentLevelIndex,
       totalCompleted:     this.totalCompleted,
       totalAttempts:      this.totalAttempts,
       energy:             this.energy,
       lastFreeEnergyTime: this.lastFreeEnergyTime,
+      completedPhrases:   this.completedPhrases,
       removedForbidden: Object.fromEntries(
         Object.entries(this.removedForbidden).map(([k, s]) => [k, [...s]])
       )
@@ -243,39 +281,118 @@ class PromtiGame {
     }
   }
 
-  // ------------------------------------------------------------------ LEVEL LOAD
-  _loadLevel(levelIndex) {
-    this.currentPhrase = GAME_DATA.phrases[levelIndex];
+  // ------------------------------------------------------------------ START SCREEN
+  _showStartScreen() {
+    this._renderStartScreen();
+    this.el.startScreen.classList.remove('hidden');
+    this.el.gameContainer.classList.add('hidden');
+  }
 
-    if (!this.currentPhrase) {
-      this._showGameComplete();
+  _renderStartScreen() {
+    const container = this.el.dictionariesContainer;
+    container.innerHTML = '';
+
+    this.dictionaries.forEach(dict => {
+      const dictPhrases = this.phrases.filter(p => p.dictionary_id === dict.id);
+      const total = dictPhrases.length;
+      const completed = dictPhrases.filter(p => this.completedPhrases[p.id]).length;
+      const allDone = total > 0 && completed === total;
+
+      const badge = document.createElement('div');
+      badge.className = 'dict-badge' + (allDone ? ' dict-badge-done' : '');
+
+      if (dict.icon) {
+        const iconEl = document.createElement('div');
+        iconEl.className = 'dict-badge-icon';
+        iconEl.textContent = dict.icon;
+        badge.appendChild(iconEl);
+      }
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'dict-badge-name';
+      nameEl.textContent = dict.name;
+
+      const exampleEl = document.createElement('div');
+      exampleEl.className = 'dict-badge-example';
+      exampleEl.textContent = dict.example;
+
+      const progressEl = document.createElement('div');
+      progressEl.className = 'dict-badge-progress';
+      progressEl.textContent = `${completed} / ${total}`;
+
+      badge.appendChild(nameEl);
+      badge.appendChild(exampleEl);
+      badge.appendChild(progressEl);
+
+      if (allDone) {
+        const checkEl = document.createElement('div');
+        checkEl.className = 'dict-badge-check';
+        checkEl.textContent = '✓';
+        badge.appendChild(checkEl);
+      } else {
+        badge.addEventListener('click', () => this._onDictionaryClick(dict.id));
+      }
+
+      container.appendChild(badge);
+    });
+  }
+
+  _onDictionaryClick(dictionaryId) {
+    if (this.energy < 1) {
+      this._openEnergyModal();
       return;
     }
+    this.currentDictionaryId = dictionaryId;
+    const phrase = this._selectRandomPhrase(dictionaryId);
+    if (!phrase) return;
+    this._showGameScreen(phrase);
+  }
 
-    this.currentLevelIndex = levelIndex;
+  _selectRandomPhrase(dictionaryId) {
+    const dictPhrases = this.phrases.filter(p => p.dictionary_id === dictionaryId);
+    const uncompleted = dictPhrases.filter(p => !this.completedPhrases[p.id]);
+    if (uncompleted.length === 0) return null;
+    return uncompleted[Math.floor(Math.random() * uncompleted.length)];
+  }
+
+  _goBack() {
+    this._showStartScreen();
+  }
+
+  // ------------------------------------------------------------------ GAME SCREEN
+  _showGameScreen(phrase) {
+    this.el.startScreen.classList.add('hidden');
+    this.el.gameContainer.classList.remove('hidden');
+    this._loadPhrase(phrase);
+  }
+
+  _loadPhrase(phrase) {
+    this.currentPhrase       = phrase;
     this.promptSentThisLevel = false;
     this.selectionMode       = false;
     this.selectedForbiddenId = null;
 
-    // Build active forbidden list keyed by the phrase's DB id
-    const dbId   = this.currentPhrase.id;
-    const removed = this.removedForbidden[dbId] || new Set();
-    this.activeForbidden = GAME_DATA.forbidden_words
-      .filter(fw => fw.phrase_id === dbId && !removed.has(fw.id));
+    // Build active forbidden list keyed by the phrase's id
+    const removed = this.removedForbidden[phrase.id] || new Set();
+    this.activeForbidden = this.forbiddenWords
+      .filter(fw => fw.phrase_id === phrase.id && !removed.has(fw.id));
 
-    // Update level indicator (1-based display)
+    // Update level indicator: N = explained in this dict, M = total in dict
+    const dictPhrases = this.phrases.filter(p => p.dictionary_id === this.currentDictionaryId);
+    const completedInDict = dictPhrases.filter(p => this.completedPhrases[p.id]).length;
+    const totalInDict = dictPhrases.length;
     this.el.levelIndicator.textContent =
-      `Уровень ${levelIndex + 1} из ${GAME_DATA.phrases.length}`;
+      `Уровень ${completedInDict} из ${totalInDict}`;
 
     // Render phrase
-    this.el.targetPhrase.textContent = this.currentPhrase.phrase;
+    this.el.targetPhrase.textContent = phrase.phrase;
 
     // Render forbidden words
     this._renderForbiddenWords();
 
     // Reset input area
-    this.el.promptTextarea.value    = '';
-    this.el.promptTextarea.disabled = false;
+    this.el.promptTextarea.value      = '';
+    this.el.promptTextarea.disabled   = false;
     this.el.validationMsg.textContent = '';
 
     // Reset response area
@@ -384,7 +501,7 @@ class PromtiGame {
   }
 
   _removeForbiddenWord(fwId) {
-    const pid = this.currentPhrase.id; // DB id, not level index
+    const pid = this.currentPhrase.id;
     if (!this.removedForbidden[pid]) this.removedForbidden[pid] = new Set();
     this.removedForbidden[pid].add(fwId);
 
@@ -514,13 +631,13 @@ class PromtiGame {
     }
   }
 
-  // Normalize a single word: lowercase + ё→е (spaces not stripped — used for word-level checks)
+  // Normalize a single word: lowercase + ё→е
   _normalizeWord(word) {
     return word.toLowerCase().replace(/ё/g, 'е');
   }
 
-  // Split phrase into words and check each one is present anywhere in the response (order-agnostic).
-  // Uses stem-based matching to handle Russian declensions (e.g. "торта" matches "торт").
+  // Split phrase into words and check each one is present in the response.
+  // Uses stem-based matching to handle Russian declensions.
   _checkPhraseInResponse(response) {
     const normResponse = this._normalizeWord(response);
     return this._phraseWords().every(w => {
@@ -560,7 +677,7 @@ class PromtiGame {
     }
   }
 
-  // Highlight each word of the target phrase independently in the DOM (order-agnostic)
+  // Highlight each word of the target phrase in the DOM
   _highlightPhraseInDOM(container) {
     const words = this.currentPhrase.phrase.split(/\s+/).filter(w => w.length > 0);
 
@@ -611,10 +728,19 @@ class PromtiGame {
 
   _nextWord() {
     this._showFullscreenAd(() => {
+      // Mark current phrase as completed
+      this.completedPhrases[this.currentPhrase.id] = true;
       this.totalCompleted++;
-      this._loadLevel(this.currentLevelIndex + 1);
       this._saveProgress();
       this._updateStatsPanel();
+
+      // Try to get next random phrase from same dictionary
+      const nextPhrase = this._selectRandomPhrase(this.currentDictionaryId);
+      if (!nextPhrase) {
+        this._showDictionaryComplete();
+      } else {
+        this._loadPhrase(nextPhrase);
+      }
     });
   }
 
@@ -635,9 +761,9 @@ class PromtiGame {
   }
 
   _updateStatsPanel() {
-    this.el.statCompleted.textContent  = this.totalCompleted;
-    this.el.statAttempts.textContent   = this.totalAttempts;
-    this.el.statEnergy.textContent     = this.energy;
+    this.el.statCompleted.textContent = this.totalCompleted;
+    this.el.statAttempts.textContent  = this.totalAttempts;
+    this.el.statEnergy.textContent    = this.energy;
   }
 
   _openEnergyModal() {
@@ -760,12 +886,17 @@ class PromtiGame {
     });
   }
 
-  // ------------------------------------------------------------------ GAME COMPLETE
-  _showGameComplete() {
+  // ------------------------------------------------------------------ DICTIONARY COMPLETE
+  _showDictionaryComplete() {
+    // Update level indicator to show full completion
+    const dictPhrases = this.phrases.filter(p => p.dictionary_id === this.currentDictionaryId);
+    const total = dictPhrases.length;
+    this.el.levelIndicator.textContent = `Уровень ${total} из ${total}`;
+
     this.el.responseBox.innerHTML = `
       <div class="game-complete">
-        <h2>Поздравляем!</h2>
-        <p>Вы прошли все доступные фразы!<br>Следите за обновлениями — новые слова скоро появятся.</p>
+        <h2>Словарь пройден!</h2>
+        <p>Вы объяснили все слова в этом словаре!<br>Нажмите «← Назад», чтобы выбрать другой.</p>
       </div>`;
     this.el.resultBtns.classList.add('hidden');
     this.el.btnSend.disabled = true;
